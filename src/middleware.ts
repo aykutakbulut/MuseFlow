@@ -36,6 +36,6 @@ export function middleware(req: NextRequest) {
 // Middleware'in çalışacağı yolları belirliyoruz (statik dosyaları hariç tut)
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|manifest.json|icon-.*|apple-icon-.*).*)",
+    "/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|manifest.json|sw.js|icon.png|icon-.*|apple-icon-.*).*)",
   ],
 };
