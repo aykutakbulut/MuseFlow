@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { PlayerProvider } from "../contexts/PlayerContext";
 import { Player } from "../components/player/Player";
@@ -8,20 +7,6 @@ import { ErrorBoundary } from "../components/ui/ErrorBoundary";
 import { I18nProvider } from "../contexts/I18nContext";
 import { PWAProvider } from "../contexts/PWAContext";
 import { InstallBanner } from "../components/ui/InstallBanner";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-  display: "swap",
-  fallback: ["system-ui", "arial", "sans-serif"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-  display: "swap",
-  fallback: ["ui-monospace", "monospace"],
-});
 
 export const viewport: Viewport = {
   themeColor: "#0a0a0a",
@@ -72,7 +57,7 @@ export default function RootLayout({
   return (
     <html lang="tr">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className="font-sans antialiased"
       >
         <I18nProvider>
           <PWAProvider>
