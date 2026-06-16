@@ -26,13 +26,6 @@ export function PWAProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (typeof window !== "undefined") {
-      // Register Service Worker
-      if ("serviceWorker" in navigator) {
-        navigator.serviceWorker.register("/sw.js").catch((err) => {
-          console.error("Service Worker registration failed: ", err);
-        });
-      }
-
       // Check if dismissed in this session
       const dismissed = sessionStorage.getItem("pwa_install_dismissed") === "true";
       setIsDismissed(dismissed);

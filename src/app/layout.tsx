@@ -17,7 +17,6 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  manifest: "/manifest.json",
   title: "MuseFlow — Müzik Keşfet ve Dinle",
   description:
     "MuseFlow ile YouTube'dan müzik arayın, keşfedin ve dinleyin. Playlist oluşturun, favorilerinizi yönetin.",
