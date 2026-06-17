@@ -1,15 +1,25 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { hashPassword } from "@/lib/auth";
 
-export default function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
+}) {
+  const resolvedSearchParams = await searchParams;
+  const hasError = resolvedSearchParams.error === "1";
+
   async function login(formData: FormData) {
     "use server";
     const password = formData.get("password") as string;
     const correctPassword = process.env.APP_PASSWORD;
 
     if (password === correctPassword) {
+      const hashedPassword = await hashPassword(password);
+      
       const cookieStore = await cookies();
-      cookieStore.set("museflow_auth", password, {
+      cookieStore.set("museflow_auth", hashedPassword, {
         maxAge: 60 * 60 * 24 * 365, // 1 yıl geçerli
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
@@ -28,6 +38,12 @@ export default function LoginPage() {
           <h1 className="text-3xl font-bold text-white mb-2">MuseFlow</h1>
           <p className="text-muted">Lütfen devam etmek için şifreyi girin.</p>
         </div>
+        
+        {hasError && (
+          <div className="mb-6 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-center text-sm text-red-400">
+            Hatalı şifre girdiniz. Lütfen tekrar deneyin.
+          </div>
+        )}
         
         <form action={login} className="space-y-6">
           <div>

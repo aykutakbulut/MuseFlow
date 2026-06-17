@@ -3,7 +3,7 @@
 import YouTube, { YouTubeEvent, YouTubePlayer } from "react-youtube";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { usePlayer } from "../../contexts/PlayerContext";
-import { Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, ChevronDown, MonitorPlay, Music, Heart, ListPlus } from "lucide-react";
+import { Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, ChevronDown, MonitorPlay, Music, Heart } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useLibrary } from "../../contexts/LibraryContext";
 import { useI18n } from "../../contexts/I18nContext";

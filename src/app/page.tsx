@@ -96,7 +96,7 @@ export default function Home() {
     };
     void search();
     return () => { cancelled = true; };
-  }, [debouncedQuery]);
+  }, [debouncedQuery, t]);
 
   const hasResults = searchState.status === "success" && searchState.tracks.length > 0;
 

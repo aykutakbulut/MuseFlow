@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Innertube } from "youtubei.js";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 // Innertube singleton — her request'te yeniden oluşturmayı önler
 let innertubeInstance: Innertube | null = null;
@@ -19,6 +20,34 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
+
+  // ── Rate Limiting ──────────────────────────────────────────────
+  const ip =
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    request.headers.get("x-real-ip") ??
+    "unknown";
+
+  const rateResult = checkRateLimit(ip);
+
+  if (rateResult.limited) {
+    const retryAfterSec = Math.ceil(rateResult.retryAfterMs / 1000);
+    console.warn(
+      `[Audio API] Rate limit aşıldı — IP: ${ip} | istek: ${rateResult.count} | retry-after: ${retryAfterSec}s`,
+    );
+    return NextResponse.json(
+      {
+        error: `Çok fazla istek gönderildi. Lütfen ${retryAfterSec} saniye sonra tekrar deneyin.`,
+        code: "RATE_LIMITED",
+        retryable: true,
+      },
+      {
+        status: 429,
+        headers: {
+          "Retry-After": String(retryAfterSec),
+        },
+      },
+    );
+  }
 
   if (!id || !/^[a-zA-Z0-9_-]{6,20}$/.test(id)) {
     return NextResponse.json(
@@ -107,7 +136,7 @@ export async function GET(
     );
 
     // CORS
-    responseHeaders.set("Access-Control-Allow-Origin", "*");
+    // responseHeaders.set("Access-Control-Allow-Origin", "*");
 
     return new Response(audioResponse.body, {
       status: audioResponse.status === 206 ? 206 : 200,

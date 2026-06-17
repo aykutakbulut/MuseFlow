@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { TtlCache } from "@/lib/cache";
+import { checkRateLimit } from "@/lib/rate-limit";
 import type { YouTubeVideoResponse } from "@/types/youtube";
 
 const YT_VIDEOS_API_URL = "https://www.googleapis.com/youtube/v3/videos";
@@ -12,6 +13,34 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
+
+  // ── Rate Limiting ──────────────────────────────────────────────
+  const ip =
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    request.headers.get("x-real-ip") ??
+    "unknown";
+
+  const rateResult = checkRateLimit(ip);
+
+  if (rateResult.limited) {
+    const retryAfterSec = Math.ceil(rateResult.retryAfterMs / 1000);
+    console.warn(
+      `[Video API] Rate limit aşıldı — IP: ${ip} | istek: ${rateResult.count} | retry-after: ${retryAfterSec}s`,
+    );
+    return NextResponse.json(
+      {
+        error: `Çok fazla istek gönderildi. Lütfen ${retryAfterSec} saniye sonra tekrar deneyin.`,
+        code: "RATE_LIMITED",
+        retryable: true,
+      },
+      {
+        status: 429,
+        headers: {
+          "Retry-After": String(retryAfterSec),
+        },
+      },
+    );
+  }
 
   if (!id || id.trim().length === 0) {
     return NextResponse.json(
