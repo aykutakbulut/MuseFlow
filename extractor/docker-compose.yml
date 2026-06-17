@@ -1,0 +1,59 @@
+# MuseFlow Extractor — Oracle Cloud Always Free + Cloudflare WARP + Caddy(HTTPS)
+#
+# Üç servis:
+#   warp      → tüm YouTube trafiğini Cloudflare WARP IP'sinden çıkarır (bloklanmıyor)
+#   extractor → ses çıkarım servisi (çıkışı warp proxy'sine yönlendirilmiş)
+#   caddy     → otomatik HTTPS (Let's Encrypt) — Vercel https olduğu için şart
+#
+# Kullanım:  DOMAIN=<vm-ip>.sslip.io  docker compose up -d --build
+# (DOMAIN ve EXTRACTOR_TOKEN için .env dosyası da kullanabilirsin — .env.example'a bak)
+
+services:
+  warp:
+    image: caomingjun/warp
+    container_name: warp
+    restart: always
+    device_cgroup_rules:
+      - "c 10:200 rwm"
+    environment:
+      - WARP_SLEEP=2
+    cap_add:
+      - MKNOD
+      - AUDIT_WRITE
+      - NET_ADMIN
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=0
+      - net.ipv4.conf.all.src_valid_mark=1
+    volumes:
+      - ./warp-data:/var/lib/cloudflare-warp
+
+  extractor:
+    build: .
+    container_name: extractor
+    restart: always
+    depends_on:
+      - warp
+    environment:
+      - PORT=3000
+      # Çıkışı WARP'ın HTTP proxy'sine (port 1080 hem HTTP hem SOCKS5 verir) yönlendir
+      - WARP_PROXY=http://warp:1080
+      - EXTRACTOR_TOKEN=${EXTRACTOR_TOKEN:-}
+    # Port'u dışarı AÇMIYORUZ — sadece caddy üzerinden HTTPS ile erişilir
+    expose:
+      - "3000"
+
+  caddy:
+    image: caddy:2
+    container_name: caddy
+    restart: always
+    depends_on:
+      - extractor
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DOMAIN=${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - ./caddy-data:/data
+      - ./caddy-config:/config

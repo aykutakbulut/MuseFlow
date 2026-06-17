@@ -17,6 +17,19 @@ function formatTime(seconds: number) {
   return `${m}:${s}`;
 }
 
+// Ses kaynağı: harici extractor (Oracle+WARP / ev PC) tanımlıysa oradan,
+// değilse Vercel'in (datacenter IP'sinde bloklu) kendi route'undan.
+const EXTRACTOR_URL = process.env.NEXT_PUBLIC_EXTRACTOR_URL?.replace(/\/$/, "");
+const EXTRACTOR_TOKEN = process.env.NEXT_PUBLIC_EXTRACTOR_TOKEN;
+
+function audioSrcFor(id: string) {
+  if (EXTRACTOR_URL) {
+    const q = EXTRACTOR_TOKEN ? `?k=${encodeURIComponent(EXTRACTOR_TOKEN)}` : "";
+    return `${EXTRACTOR_URL}/audio/${id}${q}`;
+  }
+  return `/api/audio/${id}`;
+}
+
 export function Player() {
   const {
     current,
@@ -69,9 +82,9 @@ export function Player() {
     if (!audio) return;
 
     if (!isVideoMode) {
-      const newSrc = `/api/audio/${current.id}`;
+      const newSrc = audioSrcFor(current.id);
       // Sadece farklı bir şarkıysa yeniden yükle
-      if (!audio.src.endsWith(newSrc)) {
+      if (audio.src !== newSrc && !audio.src.endsWith(newSrc)) {
         audio.src = newSrc;
         audio.load();
         setAudioError(false);
