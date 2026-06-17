@@ -63,6 +63,24 @@ export function Player() {
   }, [volume]);
 
   useEffect(() => {
+    const unlockAudio = () => {
+      if (silentAudioRef.current) {
+        silentAudioRef.current.play().then(() => {
+          if (!isPlaying) silentAudioRef.current?.pause();
+        }).catch(() => {});
+        window.removeEventListener('touchstart', unlockAudio);
+        window.removeEventListener('click', unlockAudio);
+      }
+    };
+    window.addEventListener('touchstart', unlockAudio, { once: true });
+    window.addEventListener('click', unlockAudio, { once: true });
+    return () => {
+      window.removeEventListener('touchstart', unlockAudio);
+      window.removeEventListener('click', unlockAudio);
+    };
+  }, [isPlaying]);
+
+  useEffect(() => {
     if (!current) return;
     if ("mediaSession" in navigator) {
       navigator.mediaSession.metadata = new MediaMetadata({
@@ -128,9 +146,24 @@ export function Player() {
       const d = (event.target.getDuration?.() as number) ?? 0;
       if (d) setDuration(d);
     } else if (ytState === 2) {
-      setPlaying(false);
+      // Eğer kullanıcı oynamasını istiyorsa ama sayfa arka plana atıldığı için YouTube API kendi kendine durdurduysa
+      if (document.hidden && isPlaying) {
+        event.target.playVideo();
+      } else {
+        setPlaying(false);
+      }
     }
   };
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden && isPlaying && playerRef.current) {
+        playerRef.current.playVideo();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [isPlaying]);
 
   const handleEnded = () => {
     if (queue.length > 0 && queueIndex >= 0) {
@@ -272,7 +305,7 @@ export function Player() {
                 opts={{
                   height: "100%",
                   width: "100%",
-                  playerVars: { autoplay: 1, controls: 0, disablekb: 1, fs: 0, modestbranding: 1, rel: 0 },
+                  playerVars: { autoplay: 1, controls: 0, disablekb: 1, fs: 0, modestbranding: 1, rel: 0, playsinline: 1 },
                 }}
                 onReady={handleReady}
                 onEnd={handleEnded}
