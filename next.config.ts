@@ -3,7 +3,7 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   turbopack: {},
   reactStrictMode: true,
-  serverExternalPackages: ["youtubei.js"],
+  serverExternalPackages: ["youtubei.js", "jsdom", "bgutils-js"],
   images: {
     remotePatterns: [
       {

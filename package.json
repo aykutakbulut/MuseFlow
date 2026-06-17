@@ -13,6 +13,7 @@
   "dependencies": {
     "@ducanh2912/next-pwa": "^10.2.9",
     "bcryptjs": "^3.0.3",
+    "bgutils-js": "^3.2.0",
     "clsx": "^2.1.1",
     "framer-motion": "^12.40.0",
     "lucide-react": "^1.18.0",
@@ -29,6 +30,7 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/bcryptjs": "^3.0.0",
+    "@types/jsdom": "^28.0.3",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

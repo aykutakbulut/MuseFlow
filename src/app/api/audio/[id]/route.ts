@@ -1,69 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Innertube } from "youtubei.js";
 import { checkRateLimit } from "@/lib/rate-limit";
+import {
+  getStreamingSession,
+  resetStreamingSession,
+} from "@/lib/potoken";
 
-type InnerTubeClient = "IOS" | "ANDROID" | "WEB" | "MWEB" | "TV";
+type InnerTubeClient = "TV" | "MWEB" | "WEB";
 
 // youtubei.js Node.js runtime gerektirir (Edge'de çalışmaz)
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-// Ses akışını proxy ederken zaman aşımına düşmemek için
+// PoToken üretimi + ses akışı proxy'si zaman alabilir
 export const maxDuration = 60;
 
-// Innertube singleton'ları — biri cookie'li (web client'ları için),
-// biri cookie'siz (mobil client'lar cookie ile 400 veriyor)
-let innertubeWithCookie: Innertube | null = null;
-let innertubeNoCookie: Innertube | null = null;
-
-async function getInnertube(useCookie: boolean): Promise<Innertube> {
-  if (useCookie) {
-    if (!innertubeWithCookie) {
-      const cookie = process.env.YOUTUBE_COOKIE?.trim();
-      innertubeWithCookie = await Innertube.create({
-        lang: "tr",
-        location: "TR",
-        retrieve_player: true,
-        ...(cookie ? { cookie } : {}),
-      });
-    }
-    return innertubeWithCookie;
-  }
-
-  if (!innertubeNoCookie) {
-    innertubeNoCookie = await Innertube.create({
-      lang: "tr",
-      location: "TR",
-      retrieve_player: true,
-    });
-  }
-  return innertubeNoCookie;
-}
-
-function resetInnertube() {
-  innertubeWithCookie = null;
-  innertubeNoCookie = null;
-}
-
 /**
- * Denenecek client'lar. Mobil client'lar (IOS/ANDROID) cookie ile 400
- * verdiği için cookie'siz oturumla çağrılır. Web tabanlı client'lar
- * (WEB/MWEB/TV) cookie ile bot blokunu geçer.
+ * Denenecek client'lar (öncelik sırasıyla). PoToken ile birlikte:
+ *   - TV: çözülebilir (decipher) URL döndürür — birincil seçim, doğrulandı.
+ *   - MWEB: yedek.
+ *   - WEB: artık SABR kullandığı için direkt URL vermez, son çare.
  */
-const CLIENT_PLAN: { client: InnerTubeClient; useCookie: boolean }[] = [
-  { client: "IOS", useCookie: false },
-  { client: "ANDROID", useCookie: false },
-  { client: "MWEB", useCookie: true },
-  { client: "TV", useCookie: true },
-  { client: "WEB", useCookie: true },
-];
+const CLIENT_PRIORITY: InnerTubeClient[] = ["TV", "MWEB", "WEB"];
 
 type ClientDiagnostic = {
   client: InnerTubeClient;
-  cookie: boolean;
   playability?: string;
   reason?: string;
   audioFormatCount?: number;
-  hasDirectUrl?: boolean;
+  fetchStatus?: number;
   error?: string;
 };
 
@@ -71,11 +34,11 @@ async function resolveAudioUrl(
   id: string,
 ): Promise<{ url: string | null; diagnostics: ClientDiagnostic[] }> {
   const diagnostics: ClientDiagnostic[] = [];
+  const innertube = await getStreamingSession();
 
-  for (const { client, useCookie } of CLIENT_PLAN) {
-    const diag: ClientDiagnostic = { client, cookie: useCookie };
+  for (const client of CLIENT_PRIORITY) {
+    const diag: ClientDiagnostic = { client };
     try {
-      const innertube = await getInnertube(useCookie);
       const info = await innertube.getBasicInfo(id, { client });
 
       diag.playability = info.playability_status?.status;
@@ -97,10 +60,6 @@ async function resolveAudioUrl(
         (a, b) => (b.bitrate ?? 0) - (a.bitrate ?? 0),
       )[0]!;
 
-      diag.hasDirectUrl = !!bestAudio.url;
-
-      // IOS/ANDROID formatları genelde direkt url içerir;
-      // decipher her iki durumu da (cipher / direkt) ele alır.
       const audioUrl = bestAudio.url
         ? bestAudio.url
         : await bestAudio.decipher(innertube.session.player);
@@ -168,7 +127,7 @@ export async function GET(
 
     if (!audioUrl) {
       // Oturum geçersiz kalmış olabilir, bir sonraki istek için sıfırla
-      resetInnertube();
+      resetStreamingSession();
       return NextResponse.json(
         {
           error: "Bu video için ses akışı bulunamadı.",
@@ -248,7 +207,7 @@ export async function GET(
     );
 
     // Innertube instance'ı sıfırla — belki eski oturum geçersiz kalmıştır
-    resetInnertube();
+    resetStreamingSession();
 
     return NextResponse.json(
       {
