@@ -1,7 +1,7 @@
 "use client";
 
 import YouTube, { YouTubeEvent, YouTubePlayer } from "react-youtube";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { usePlayer } from "../../contexts/PlayerContext";
 import { Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, ChevronDown, MonitorPlay, Music, Heart, ListPlus } from "lucide-react";
 import { cn } from "../../lib/utils";
@@ -41,62 +41,165 @@ export function Player() {
   const { isFavorite, toggleFavorite } = useLibrary();
   const { t } = useI18n();
 
-  const playerRef = useRef<YouTubePlayer | null>(null);
-  const silentAudioRef = useRef<HTMLAudioElement | null>(null);
+  // Refs
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const ytPlayerRef = useRef<YouTubePlayer | null>(null);
   const [seeking, setSeeking] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [isVideoMode, setIsVideoMode] = useState(false);
+  const [audioError, setAudioError] = useState(false);
 
-  const currentTimeRef = useRef(currentTime);
-  const durationRef = useRef(duration);
   const seekingRef = useRef(seeking);
+  const isVideoModeRef = useRef(isVideoMode);
 
   useEffect(() => {
-    currentTimeRef.current = currentTime;
-    durationRef.current = duration;
     seekingRef.current = seeking;
-  }, [currentTime, duration, seeking]);
+  }, [seeking]);
 
   useEffect(() => {
-    if (!playerRef.current) return;
-    void playerRef.current.setVolume(volume);
+    isVideoModeRef.current = isVideoMode;
+  }, [isVideoMode]);
+
+  // ── Native Audio: Ses modunda arka planda çalma ────────────────
+
+  // Audio element src güncelleme
+  useEffect(() => {
+    if (!current) return;
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    if (!isVideoMode) {
+      const newSrc = `/api/audio/${current.id}`;
+      // Sadece farklı bir şarkıysa yeniden yükle
+      if (!audio.src.endsWith(newSrc)) {
+        audio.src = newSrc;
+        audio.load();
+        setAudioError(false);
+        if (isPlaying) {
+          audio.play().catch(() => setAudioError(true));
+        }
+      }
+    }
+  }, [current, isVideoMode, isPlaying]);
+
+  // Play/Pause senkronizasyonu (ses modu)
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio || isVideoMode) return;
+
+    if (isPlaying) {
+      audio.play().catch(() => setAudioError(true));
+    } else {
+      audio.pause();
+    }
+  }, [isPlaying, isVideoMode]);
+
+  // Ses seviyesi senkronizasyonu
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (audio) {
+      audio.volume = volume / 100;
+    }
+    if (ytPlayerRef.current) {
+      void ytPlayerRef.current.setVolume(volume);
+    }
   }, [volume]);
 
+  // Native audio event listener'ları
   useEffect(() => {
-    const unlockAudio = () => {
-      if (silentAudioRef.current) {
-        silentAudioRef.current.play().then(() => {
-          if (!isPlaying) silentAudioRef.current?.pause();
-        }).catch(() => {});
-        window.removeEventListener('touchstart', unlockAudio);
-        window.removeEventListener('click', unlockAudio);
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const onTimeUpdate = () => {
+      if (!seekingRef.current && !isVideoModeRef.current) {
+        setTime(audio.currentTime);
       }
     };
-    window.addEventListener('touchstart', unlockAudio, { once: true });
-    window.addEventListener('click', unlockAudio, { once: true });
-    return () => {
-      window.removeEventListener('touchstart', unlockAudio);
-      window.removeEventListener('click', unlockAudio);
+
+    const onDurationChange = () => {
+      if (!isVideoModeRef.current && audio.duration && isFinite(audio.duration)) {
+        setDuration(audio.duration);
+      }
     };
-  }, [isPlaying]);
+
+    const onEnded = () => {
+      if (isVideoModeRef.current) return;
+      if (queue.length > 0 && queueIndex >= 0) {
+        playNext();
+      } else if (isLooping) {
+        audio.currentTime = 0;
+        audio.play().catch(() => {});
+      } else {
+        setPlaying(false);
+      }
+    };
+
+    const onPlay = () => {
+      if (!isVideoModeRef.current) setPlaying(true);
+    };
+
+    const onPause = () => {
+      // Sadece kullanıcı gerçekten durdurduysa (arka planda değilse)
+      if (!isVideoModeRef.current && !document.hidden) {
+        setPlaying(false);
+      }
+    };
+
+    const onError = () => {
+      if (!isVideoModeRef.current) {
+        console.error("[Player] Audio yükleme hatası:", audio.error);
+        setAudioError(true);
+      }
+    };
+
+    audio.addEventListener("timeupdate", onTimeUpdate);
+    audio.addEventListener("durationchange", onDurationChange);
+    audio.addEventListener("ended", onEnded);
+    audio.addEventListener("play", onPlay);
+    audio.addEventListener("pause", onPause);
+    audio.addEventListener("error", onError);
+
+    return () => {
+      audio.removeEventListener("timeupdate", onTimeUpdate);
+      audio.removeEventListener("durationchange", onDurationChange);
+      audio.removeEventListener("ended", onEnded);
+      audio.removeEventListener("play", onPlay);
+      audio.removeEventListener("pause", onPause);
+      audio.removeEventListener("error", onError);
+    };
+  }, [setTime, setDuration, setPlaying, playNext, queue, queueIndex, isLooping]);
+
+  // ── Media Session API (Bildirim çubuğu kontrolleri) ────────────
 
   useEffect(() => {
     if (!current) return;
-    if ("mediaSession" in navigator) {
-      navigator.mediaSession.metadata = new MediaMetadata({
-        title: current.title,
-        artist: current.channel,
-        artwork: [
-          { src: current.thumbnail, sizes: "512x512", type: "image/jpeg" },
-        ],
-      });
+    if (!("mediaSession" in navigator)) return;
 
-      navigator.mediaSession.setActionHandler("play", () => setPlaying(true));
-      navigator.mediaSession.setActionHandler("pause", () => setPlaying(false));
-      navigator.mediaSession.setActionHandler("previoustrack", () => playPrev());
-      navigator.mediaSession.setActionHandler("nexttrack", () => playNext());
-    }
-  }, [current, setPlaying, playPrev, playNext]);
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: current.title,
+      artist: current.channel,
+      artwork: [
+        { src: current.thumbnail, sizes: "512x512", type: "image/jpeg" },
+      ],
+    });
+
+    navigator.mediaSession.setActionHandler("play", () => {
+      setPlaying(true);
+      if (!isVideoMode) audioRef.current?.play().catch(() => {});
+    });
+    navigator.mediaSession.setActionHandler("pause", () => {
+      setPlaying(false);
+      if (!isVideoMode) audioRef.current?.pause();
+    });
+    navigator.mediaSession.setActionHandler("previoustrack", () => playPrev());
+    navigator.mediaSession.setActionHandler("nexttrack", () => playNext());
+    navigator.mediaSession.setActionHandler("seekto", (details) => {
+      if (details.seekTime != null && audioRef.current) {
+        audioRef.current.currentTime = details.seekTime;
+        setTime(details.seekTime);
+      }
+    });
+  }, [current, isVideoMode, setPlaying, playPrev, playNext, setTime]);
 
   useEffect(() => {
     if ("mediaSession" in navigator) {
@@ -104,77 +207,86 @@ export function Player() {
     }
   }, [isPlaying]);
 
-  useEffect(() => {
-    if (!playerRef.current) return;
-    if (isPlaying) {
-      void playerRef.current.playVideo();
-      silentAudioRef.current?.play().catch(() => {});
-    } else {
-      void playerRef.current.pauseVideo();
-      silentAudioRef.current?.pause();
+  // ── Video Modu: YouTube iframe (arka planda çalışmaz) ──────────
+
+  // Video modu geçişleri
+  const switchToVideoMode = useCallback(() => {
+    const audio = audioRef.current;
+    if (audio) {
+      audio.pause();
+      audio.removeAttribute("src");
+      audio.load();
     }
-  }, [isPlaying]);
+    setIsVideoMode(true);
+  }, []);
 
-  useEffect(() => {
-    const id = window.setInterval(() => {
-      if (!playerRef.current || seekingRef.current) return;
-      const t = playerRef.current.getCurrentTime?.() ?? 0;
-      const d = playerRef.current.getDuration?.() ?? 0;
-      if (Math.abs(t - currentTimeRef.current) > 0.4) {
-        setTime(t);
-      }
-      if (d && Math.abs(d - durationRef.current) > 0.1) {
-        setDuration(d);
-      }
-    }, 250);
+  const switchToAudioMode = useCallback(() => {
+    if (ytPlayerRef.current) {
+      void ytPlayerRef.current.pauseVideo();
+    }
+    setIsVideoMode(false);
+    // Audio element yeniden yüklenecek (useEffect ile)
+  }, []);
 
-    return () => window.clearInterval(id);
-  }, [setTime, setDuration]);
-
-  const handleReady = (event: YouTubeEvent<number>) => {
-    playerRef.current = event.target;
+  // YouTube iframe event handlers
+  const handleYTReady = (event: YouTubeEvent<number>) => {
+    ytPlayerRef.current = event.target;
     void event.target.setVolume(volume);
-    const d = (event.target.getDuration?.() as number) ?? 0;
-    if (d) setDuration(d);
-    if (isPlaying) void event.target.playVideo();
+    if (isVideoMode) {
+      const d = (event.target.getDuration?.() as number) ?? 0;
+      if (d) setDuration(d);
+      if (isPlaying) void event.target.playVideo();
+    }
   };
 
-  const handleStateChange = (event: YouTubeEvent<number>) => {
+  const handleYTStateChange = (event: YouTubeEvent<number>) => {
+    if (!isVideoMode) return;
     const ytState = event.data;
     if (ytState === 1) {
       setPlaying(true);
       const d = (event.target.getDuration?.() as number) ?? 0;
       if (d) setDuration(d);
     } else if (ytState === 2) {
-      // Eğer kullanıcı oynamasını istiyorsa ama sayfa arka plana atıldığı için YouTube API kendi kendine durdurduysa
-      if (document.hidden && isPlaying) {
-        event.target.playVideo();
-      } else {
-        setPlaying(false);
-      }
+      setPlaying(false);
     }
   };
 
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.hidden && isPlaying && playerRef.current) {
-        playerRef.current.playVideo();
-      }
-    };
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, [isPlaying]);
-
-  const handleEnded = () => {
+  const handleYTEnded = () => {
+    if (!isVideoMode) return;
     if (queue.length > 0 && queueIndex >= 0) {
       playNext();
-    } else if (isLooping && playerRef.current) {
-      void playerRef.current.seekTo(0, true);
-      void playerRef.current.playVideo();
+    } else if (isLooping && ytPlayerRef.current) {
+      void ytPlayerRef.current.seekTo(0, true);
+      void ytPlayerRef.current.playVideo();
     } else {
       setPlaying(false);
     }
   };
+
+  // Video modunda play/pause senkronizasyonu
+  useEffect(() => {
+    if (!isVideoMode || !ytPlayerRef.current) return;
+    if (isPlaying) {
+      void ytPlayerRef.current.playVideo();
+    } else {
+      void ytPlayerRef.current.pauseVideo();
+    }
+  }, [isPlaying, isVideoMode]);
+
+  // Video modunda zaman takibi
+  useEffect(() => {
+    if (!isVideoMode) return;
+    const id = window.setInterval(() => {
+      if (!ytPlayerRef.current || seekingRef.current) return;
+      const t = ytPlayerRef.current.getCurrentTime?.() ?? 0;
+      const d = ytPlayerRef.current.getDuration?.() ?? 0;
+      setTime(t);
+      if (d && isFinite(d)) setDuration(d);
+    }, 250);
+    return () => window.clearInterval(id);
+  }, [isVideoMode, setTime, setDuration]);
+
+  // ── Kullanıcı etkileşim handler'ları ───────────────────────────
 
   const togglePlay = (e?: React.MouseEvent) => {
     e?.stopPropagation();
@@ -195,9 +307,16 @@ export function Player() {
     const value = Number((e.target as HTMLInputElement).value);
     const nextTime = (value / 100) * (duration || 0);
     setSeeking(false);
-    if (playerRef.current && duration) {
-      void playerRef.current.seekTo(nextTime, true);
-      if (isPlaying) void playerRef.current.playVideo();
+
+    if (isVideoMode) {
+      if (ytPlayerRef.current && duration) {
+        void ytPlayerRef.current.seekTo(nextTime, true);
+        if (isPlaying) void ytPlayerRef.current.playVideo();
+      }
+    } else {
+      if (audioRef.current) {
+        audioRef.current.currentTime = nextTime;
+      }
     }
   };
 
@@ -208,12 +327,20 @@ export function Player() {
 
   return (
     <>
+      {/* Native Audio Element — arka planda çalma için */}
+      <audio
+        ref={audioRef}
+        preload="auto"
+        playsInline
+        className="hidden"
+      />
+
       {/* Mini Player */}
       <div 
         className={cn(
           "fixed left-2 right-2 md:left-4 md:right-4 z-40 transition-all duration-500 ease-in-out cursor-pointer",
           isExpanded ? "opacity-0 translate-y-10 pointer-events-none" : "opacity-100 translate-y-0",
-          "bottom-20 md:bottom-4" // Mobil Nav'ın üstünde, masaüstünde en altta
+          "bottom-20 md:bottom-4"
         )}
         onClick={() => setIsExpanded(true)}
       >
@@ -264,10 +391,10 @@ export function Player() {
             <ChevronDown className="h-7 w-7" />
           </button>
           
-          {/* Audio / Video Toggle (YouTube Music Style) */}
+          {/* Audio / Video Toggle */}
           <div className="flex bg-white/10 p-1 rounded-full backdrop-blur-md">
             <button
-              onClick={() => setIsVideoMode(false)}
+              onClick={switchToAudioMode}
               className={cn(
                 "flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-bold transition-colors",
                 !isVideoMode ? "bg-white/20 text-white" : "text-muted hover:text-white"
@@ -276,7 +403,7 @@ export function Player() {
               <Music className="h-4 w-4" /> {t("player.audio")}
             </button>
             <button
-              onClick={() => setIsVideoMode(true)}
+              onClick={switchToVideoMode}
               className={cn(
                 "flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-bold transition-colors",
                 isVideoMode ? "bg-white/20 text-white" : "text-muted hover:text-white"
@@ -293,23 +420,22 @@ export function Player() {
         <div className="flex-1 flex flex-col justify-center px-6 md:px-12 max-w-4xl mx-auto w-full">
           <div className={cn(
             "w-full max-w-[400px] mx-auto aspect-square md:aspect-video rounded-3xl overflow-hidden shadow-2xl transition-all duration-500 relative bg-black",
-            isVideoMode ? "opacity-100 scale-100" : "opacity-100"
           )}>
-            {/* Tek bir YouTube Oynatıcı (Müzik kesilmesin diye unmount edilmez) */}
+            {/* YouTube Player — sadece video modunda aktif */}
             <div className={cn(
-              "absolute inset-0 w-full h-full pointer-events-none",
-              isVideoMode ? "opacity-100 z-10" : "opacity-0 -z-10"
+              "absolute inset-0 w-full h-full",
+              isVideoMode ? "opacity-100 z-10 pointer-events-auto" : "opacity-0 -z-10 pointer-events-none"
             )}>
               <YouTube
                 videoId={current.id}
                 opts={{
                   height: "100%",
                   width: "100%",
-                  playerVars: { autoplay: 1, controls: 0, disablekb: 1, fs: 0, modestbranding: 1, rel: 0, playsinline: 1 },
+                  playerVars: { autoplay: isVideoMode ? 1 : 0, controls: 0, disablekb: 1, fs: 0, modestbranding: 1, rel: 0, playsinline: 1 },
                 }}
-                onReady={handleReady}
-                onEnd={handleEnded}
-                onStateChange={handleStateChange}
+                onReady={handleYTReady}
+                onEnd={handleYTEnded}
+                onStateChange={handleYTStateChange}
                 className="w-full h-full"
                 iframeClassName="w-full h-full"
               />
@@ -325,6 +451,14 @@ export function Player() {
                 alt={current.title} 
                 className="w-full h-full object-cover shadow-[0_20px_50px_rgba(0,0,0,0.5)]" 
               />
+              {/* Audio hata göstergesi */}
+              {audioError && !isVideoMode && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/60">
+                  <p className="text-sm text-muted text-center px-4">
+                    Ses akışı yüklenemedi. Video moduna geçmeyi dene.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 
@@ -388,16 +522,6 @@ export function Player() {
           </div>
         </div>
       </div>
-
-      {/* Arka planda çalmayı sağlayan "Silent Audio Hack" */}
-      <audio 
-        ref={silentAudioRef}
-        src="data:audio/mpeg;base64,//tQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"
-        loop
-        playsInline
-        preload="auto"
-        className="hidden"
-      />
     </>
   );
 }
