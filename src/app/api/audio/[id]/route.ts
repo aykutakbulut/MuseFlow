@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Innertube } from "youtubei.js";
 import { checkRateLimit } from "@/lib/rate-limit";
 
-type InnerTubeClient = "IOS" | "ANDROID" | "WEB";
+type InnerTubeClient = "IOS" | "ANDROID" | "WEB" | "MWEB" | "TV";
 
 // youtubei.js Node.js runtime gerektirir (Edge'de çalışmaz)
 export const runtime = "nodejs";
@@ -10,39 +10,56 @@ export const dynamic = "force-dynamic";
 // Ses akışını proxy ederken zaman aşımına düşmemek için
 export const maxDuration = 60;
 
-// Innertube singleton — her request'te yeniden oluşturmayı önler
-let innertubeInstance: Innertube | null = null;
+// Innertube singleton'ları — biri cookie'li (web client'ları için),
+// biri cookie'siz (mobil client'lar cookie ile 400 veriyor)
+let innertubeWithCookie: Innertube | null = null;
+let innertubeNoCookie: Innertube | null = null;
 
-async function getInnertube(): Promise<Innertube> {
-  if (!innertubeInstance) {
-    // Oturum cookie'si — Vercel gibi datacenter IP'lerinde YouTube'un
-    // "Sign in to confirm you're not a bot" blokunu aşmak için gerekli.
-    // Giriş yapılmış bir YouTube hesabının cookie'si YOUTUBE_COOKIE env
-    // değişkeninde tutulur.
-    const cookie = process.env.YOUTUBE_COOKIE?.trim();
+async function getInnertube(useCookie: boolean): Promise<Innertube> {
+  if (useCookie) {
+    if (!innertubeWithCookie) {
+      const cookie = process.env.YOUTUBE_COOKIE?.trim();
+      innertubeWithCookie = await Innertube.create({
+        lang: "tr",
+        location: "TR",
+        retrieve_player: true,
+        ...(cookie ? { cookie } : {}),
+      });
+    }
+    return innertubeWithCookie;
+  }
 
-    innertubeInstance = await Innertube.create({
+  if (!innertubeNoCookie) {
+    innertubeNoCookie = await Innertube.create({
       lang: "tr",
       location: "TR",
-      // Player'ı önceden çöz — decipher için gerekli
       retrieve_player: true,
-      ...(cookie ? { cookie } : {}),
     });
   }
-  return innertubeInstance;
+  return innertubeNoCookie;
+}
+
+function resetInnertube() {
+  innertubeWithCookie = null;
+  innertubeNoCookie = null;
 }
 
 /**
- * Birden fazla istemci tipini deneyerek ses formatını çözer.
- * Vercel gibi datacenter IP'lerinde varsayılan WEB istemcisi YouTube'un
- * bot korumasına (PoToken) takılır ve streaming_data boş döner.
- * IOS / ANDROID istemcileri PoToken gerektirmez ve genelde
- * deşifre gerektirmeyen direkt URL'ler döner.
+ * Denenecek client'lar. Mobil client'lar (IOS/ANDROID) cookie ile 400
+ * verdiği için cookie'siz oturumla çağrılır. Web tabanlı client'lar
+ * (WEB/MWEB/TV) cookie ile bot blokunu geçer.
  */
-const CLIENT_PRIORITY: InnerTubeClient[] = ["IOS", "ANDROID", "WEB"];
+const CLIENT_PLAN: { client: InnerTubeClient; useCookie: boolean }[] = [
+  { client: "IOS", useCookie: false },
+  { client: "ANDROID", useCookie: false },
+  { client: "MWEB", useCookie: true },
+  { client: "TV", useCookie: true },
+  { client: "WEB", useCookie: true },
+];
 
 type ClientDiagnostic = {
   client: InnerTubeClient;
+  cookie: boolean;
   playability?: string;
   reason?: string;
   audioFormatCount?: number;
@@ -51,14 +68,14 @@ type ClientDiagnostic = {
 };
 
 async function resolveAudioUrl(
-  innertube: Innertube,
   id: string,
 ): Promise<{ url: string | null; diagnostics: ClientDiagnostic[] }> {
   const diagnostics: ClientDiagnostic[] = [];
 
-  for (const client of CLIENT_PRIORITY) {
-    const diag: ClientDiagnostic = { client };
+  for (const { client, useCookie } of CLIENT_PLAN) {
+    const diag: ClientDiagnostic = { client, cookie: useCookie };
     try {
+      const innertube = await getInnertube(useCookie);
       const info = await innertube.getBasicInfo(id, { client });
 
       diag.playability = info.playability_status?.status;
@@ -147,15 +164,11 @@ export async function GET(
   }
 
   try {
-    const innertube = await getInnertube();
-    const { url: audioUrl, diagnostics } = await resolveAudioUrl(
-      innertube,
-      id,
-    );
+    const { url: audioUrl, diagnostics } = await resolveAudioUrl(id);
 
     if (!audioUrl) {
       // Oturum geçersiz kalmış olabilir, bir sonraki istek için sıfırla
-      innertubeInstance = null;
+      resetInnertube();
       return NextResponse.json(
         {
           error: "Bu video için ses akışı bulunamadı.",
@@ -235,7 +248,7 @@ export async function GET(
     );
 
     // Innertube instance'ı sıfırla — belki eski oturum geçersiz kalmıştır
-    innertubeInstance = null;
+    resetInnertube();
 
     return NextResponse.json(
       {
