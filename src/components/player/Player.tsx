@@ -62,6 +62,30 @@ export function Player() {
   }, [volume]);
 
   useEffect(() => {
+    if (!current) return;
+    if ("mediaSession" in navigator) {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: current.title,
+        artist: current.channel,
+        artwork: [
+          { src: current.thumbnail, sizes: "512x512", type: "image/jpeg" },
+        ],
+      });
+
+      navigator.mediaSession.setActionHandler("play", () => setPlaying(true));
+      navigator.mediaSession.setActionHandler("pause", () => setPlaying(false));
+      navigator.mediaSession.setActionHandler("previoustrack", () => playPrev());
+      navigator.mediaSession.setActionHandler("nexttrack", () => playNext());
+    }
+  }, [current, setPlaying, playPrev, playNext]);
+
+  useEffect(() => {
+    if ("mediaSession" in navigator) {
+      navigator.mediaSession.playbackState = isPlaying ? "playing" : "paused";
+    }
+  }, [isPlaying]);
+
+  useEffect(() => {
     if (!playerRef.current) return;
     if (isPlaying) {
       void playerRef.current.playVideo();

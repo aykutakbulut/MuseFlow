@@ -9,31 +9,36 @@ export function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  const basicAuth = req.headers.get("authorization");
+  // Eğer zaten login sayfasındaysa devam et
+  if (req.nextUrl.pathname === "/login") {
+    return NextResponse.next();
+  }
 
+  const authCookie = req.cookies.get("museflow_auth");
+
+  // Cookie varsa ve doğruysa devam et
+  if (authCookie && authCookie.value === password) {
+    return NextResponse.next();
+  }
+
+  // Geriye uyumluluk için Basic Auth kontrolü
+  const basicAuth = req.headers.get("authorization");
   if (basicAuth) {
     const authValue = basicAuth.split(" ")[1];
     if (authValue) {
-      // Basic Auth değeri Base64 kodlanmış "username:password" formatındadır
-      const [user, pwd] = atob(authValue).split(":");
-      
-      // Kullanıcı adını önemsemeden sadece şifreyi kontrol ediyoruz
+      const [, pwd] = atob(authValue).split(":");
       if (pwd === password) {
         return NextResponse.next();
       }
     }
   }
 
-  // Şifre yanlış veya girilmediyse giriş penceresini göster
-  return new NextResponse("Yetkisiz Erişim", {
-    status: 401,
-    headers: {
-      "WWW-Authenticate": 'Basic realm="MuseFlow Güvenli Alan"',
-    },
-  });
+  // Cookie veya Basic Auth yoksa/yanlışsa login sayfasına yönlendir
+  const loginUrl = new URL("/login", req.url);
+  return NextResponse.redirect(loginUrl);
 }
 
-// Middleware'in çalışacağı yolları belirliyoruz (statik dosyaları hariç tut)
+// Middleware'in çalışacağı yolları belirliyoruz (statik dosyaları ve api'yi hariç tut)
 export const config = {
   matcher: [
     "/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|manifest.json|sw.js|icon.png|icon-.*|apple-icon-.*).*)",
