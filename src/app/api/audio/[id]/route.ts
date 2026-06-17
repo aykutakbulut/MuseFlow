@@ -41,22 +41,37 @@ async function getInnertube(): Promise<Innertube> {
  */
 const CLIENT_PRIORITY: InnerTubeClient[] = ["IOS", "ANDROID", "WEB"];
 
+type ClientDiagnostic = {
+  client: InnerTubeClient;
+  playability?: string;
+  reason?: string;
+  audioFormatCount?: number;
+  hasDirectUrl?: boolean;
+  error?: string;
+};
+
 async function resolveAudioUrl(
   innertube: Innertube,
   id: string,
-): Promise<string | null> {
+): Promise<{ url: string | null; diagnostics: ClientDiagnostic[] }> {
+  const diagnostics: ClientDiagnostic[] = [];
+
   for (const client of CLIENT_PRIORITY) {
+    const diag: ClientDiagnostic = { client };
     try {
       const info = await innertube.getBasicInfo(id, { client });
+
+      diag.playability = info.playability_status?.status;
+      diag.reason = info.playability_status?.reason ?? undefined;
 
       const audioFormats = info.streaming_data?.adaptive_formats?.filter(
         (f) => f.mime_type?.startsWith("audio/"),
       );
 
+      diag.audioFormatCount = audioFormats?.length ?? 0;
+
       if (!audioFormats || audioFormats.length === 0) {
-        console.warn(
-          `[Audio API] "${client}" istemcisi ses formatı döndürmedi — id: "${id}"`,
-        );
+        diagnostics.push(diag);
         continue;
       }
 
@@ -65,6 +80,8 @@ async function resolveAudioUrl(
         (a, b) => (b.bitrate ?? 0) - (a.bitrate ?? 0),
       )[0]!;
 
+      diag.hasDirectUrl = !!bestAudio.url;
+
       // IOS/ANDROID formatları genelde direkt url içerir;
       // decipher her iki durumu da (cipher / direkt) ele alır.
       const audioUrl = bestAudio.url
@@ -72,17 +89,20 @@ async function resolveAudioUrl(
         : await bestAudio.decipher(innertube.session.player);
 
       if (audioUrl) {
-        return audioUrl;
+        return { url: audioUrl, diagnostics };
       }
+      diag.error = "decipher boş URL döndürdü";
     } catch (err) {
-      console.warn(
-        `[Audio API] "${client}" istemcisi başarısız — id: "${id}":`,
-        err instanceof Error ? err.message : err,
-      );
-      // Sonraki istemciyi dene
+      diag.error = err instanceof Error ? err.message : String(err);
     }
+    diagnostics.push(diag);
   }
-  return null;
+
+  console.warn(
+    `[Audio API] Teşhis — id: "${id}":`,
+    JSON.stringify(diagnostics),
+  );
+  return { url: null, diagnostics };
 }
 
 export async function GET(
@@ -128,19 +148,21 @@ export async function GET(
 
   try {
     const innertube = await getInnertube();
-    const audioUrl = await resolveAudioUrl(innertube, id);
+    const { url: audioUrl, diagnostics } = await resolveAudioUrl(
+      innertube,
+      id,
+    );
 
     if (!audioUrl) {
-      console.error(
-        `[Audio API] Hiçbir istemci ses akışı döndüremedi — id: "${id}"` +
-          (process.env.YOUTUBE_COOKIE
-            ? " (YOUTUBE_COOKIE mevcut — cookie geçersiz/expire olmuş olabilir)"
-            : " (YOUTUBE_COOKIE TANIMLI DEĞİL — datacenter IP bloku muhtemel sebep)"),
-      );
       // Oturum geçersiz kalmış olabilir, bir sonraki istek için sıfırla
       innertubeInstance = null;
       return NextResponse.json(
-        { error: "Bu video için ses akışı bulunamadı." },
+        {
+          error: "Bu video için ses akışı bulunamadı.",
+          cookiePresent: !!process.env.YOUTUBE_COOKIE,
+          // Geçici teşhis: hangi client neden başarısız oldu
+          diagnostics,
+        },
         { status: 404 },
       );
     }
