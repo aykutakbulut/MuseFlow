@@ -15,11 +15,18 @@ let innertubeInstance: Innertube | null = null;
 
 async function getInnertube(): Promise<Innertube> {
   if (!innertubeInstance) {
+    // Oturum cookie'si — Vercel gibi datacenter IP'lerinde YouTube'un
+    // "Sign in to confirm you're not a bot" blokunu aşmak için gerekli.
+    // Giriş yapılmış bir YouTube hesabının cookie'si YOUTUBE_COOKIE env
+    // değişkeninde tutulur.
+    const cookie = process.env.YOUTUBE_COOKIE?.trim();
+
     innertubeInstance = await Innertube.create({
       lang: "tr",
       location: "TR",
       // Player'ı önceden çöz — decipher için gerekli
       retrieve_player: true,
+      ...(cookie ? { cookie } : {}),
     });
   }
   return innertubeInstance;
@@ -125,7 +132,10 @@ export async function GET(
 
     if (!audioUrl) {
       console.error(
-        `[Audio API] Hiçbir istemci ses akışı döndüremedi — id: "${id}"`,
+        `[Audio API] Hiçbir istemci ses akışı döndüremedi — id: "${id}"` +
+          (process.env.YOUTUBE_COOKIE
+            ? " (YOUTUBE_COOKIE mevcut — cookie geçersiz/expire olmuş olabilir)"
+            : " (YOUTUBE_COOKIE TANIMLI DEĞİL — datacenter IP bloku muhtemel sebep)"),
       );
       // Oturum geçersiz kalmış olabilir, bir sonraki istek için sıfırla
       innertubeInstance = null;
