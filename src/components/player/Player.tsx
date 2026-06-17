@@ -42,6 +42,7 @@ export function Player() {
   const { t } = useI18n();
 
   const playerRef = useRef<YouTubePlayer | null>(null);
+  const silentAudioRef = useRef<HTMLAudioElement | null>(null);
   const [seeking, setSeeking] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [isVideoMode, setIsVideoMode] = useState(false);
@@ -89,8 +90,10 @@ export function Player() {
     if (!playerRef.current) return;
     if (isPlaying) {
       void playerRef.current.playVideo();
+      silentAudioRef.current?.play().catch(() => {});
     } else {
       void playerRef.current.pauseVideo();
+      silentAudioRef.current?.pause();
     }
   }, [isPlaying]);
 
@@ -352,6 +355,16 @@ export function Player() {
           </div>
         </div>
       </div>
+
+      {/* Arka planda çalmayı sağlayan "Silent Audio Hack" */}
+      <audio 
+        ref={silentAudioRef}
+        src="data:audio/mpeg;base64,//tQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"
+        loop
+        playsInline
+        preload="auto"
+        className="hidden"
+      />
     </>
   );
 }
