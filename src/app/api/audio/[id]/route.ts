@@ -123,18 +123,13 @@ export async function GET(
   }
 
   try {
-    const { url: audioUrl, diagnostics } = await resolveAudioUrl(id);
+    const { url: audioUrl } = await resolveAudioUrl(id);
 
     if (!audioUrl) {
       // Oturum geçersiz kalmış olabilir, bir sonraki istek için sıfırla
       resetStreamingSession();
       return NextResponse.json(
-        {
-          error: "Bu video için ses akışı bulunamadı.",
-          cookiePresent: !!process.env.YOUTUBE_COOKIE,
-          // Geçici teşhis: hangi client neden başarısız oldu
-          diagnostics,
-        },
+        { error: "Bu video için ses akışı bulunamadı." },
         { status: 404 },
       );
     }
