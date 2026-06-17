@@ -2,6 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { Innertube } from "youtubei.js";
 import { checkRateLimit } from "@/lib/rate-limit";
 
+type InnerTubeClient = "IOS" | "ANDROID" | "WEB";
+
+// youtubei.js Node.js runtime gerektirir (Edge'de çalışmaz)
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+// Ses akışını proxy ederken zaman aşımına düşmemek için
+export const maxDuration = 60;
+
 // Innertube singleton — her request'te yeniden oluşturmayı önler
 let innertubeInstance: Innertube | null = null;
 
@@ -10,9 +18,64 @@ async function getInnertube(): Promise<Innertube> {
     innertubeInstance = await Innertube.create({
       lang: "tr",
       location: "TR",
+      // Player'ı önceden çöz — decipher için gerekli
+      retrieve_player: true,
     });
   }
   return innertubeInstance;
+}
+
+/**
+ * Birden fazla istemci tipini deneyerek ses formatını çözer.
+ * Vercel gibi datacenter IP'lerinde varsayılan WEB istemcisi YouTube'un
+ * bot korumasına (PoToken) takılır ve streaming_data boş döner.
+ * IOS / ANDROID istemcileri PoToken gerektirmez ve genelde
+ * deşifre gerektirmeyen direkt URL'ler döner.
+ */
+const CLIENT_PRIORITY: InnerTubeClient[] = ["IOS", "ANDROID", "WEB"];
+
+async function resolveAudioUrl(
+  innertube: Innertube,
+  id: string,
+): Promise<string | null> {
+  for (const client of CLIENT_PRIORITY) {
+    try {
+      const info = await innertube.getBasicInfo(id, { client });
+
+      const audioFormats = info.streaming_data?.adaptive_formats?.filter(
+        (f) => f.mime_type?.startsWith("audio/"),
+      );
+
+      if (!audioFormats || audioFormats.length === 0) {
+        console.warn(
+          `[Audio API] "${client}" istemcisi ses formatı döndürmedi — id: "${id}"`,
+        );
+        continue;
+      }
+
+      // En yüksek kaliteli ses formatını seç
+      const bestAudio = audioFormats.sort(
+        (a, b) => (b.bitrate ?? 0) - (a.bitrate ?? 0),
+      )[0]!;
+
+      // IOS/ANDROID formatları genelde direkt url içerir;
+      // decipher her iki durumu da (cipher / direkt) ele alır.
+      const audioUrl = bestAudio.url
+        ? bestAudio.url
+        : await bestAudio.decipher(innertube.session.player);
+
+      if (audioUrl) {
+        return audioUrl;
+      }
+    } catch (err) {
+      console.warn(
+        `[Audio API] "${client}" istemcisi başarısız — id: "${id}":`,
+        err instanceof Error ? err.message : err,
+      );
+      // Sonraki istemciyi dene
+    }
+  }
+  return null;
 }
 
 export async function GET(
@@ -58,38 +121,28 @@ export async function GET(
 
   try {
     const innertube = await getInnertube();
-    const info = await innertube.getBasicInfo(id);
+    const audioUrl = await resolveAudioUrl(innertube, id);
 
-    // Ses formatlarını filtrele
-    const audioFormats = info.streaming_data?.adaptive_formats?.filter(
-      (f) => f.mime_type?.startsWith("audio/"),
-    );
-
-    if (!audioFormats || audioFormats.length === 0) {
+    if (!audioUrl) {
+      console.error(
+        `[Audio API] Hiçbir istemci ses akışı döndüremedi — id: "${id}"`,
+      );
+      // Oturum geçersiz kalmış olabilir, bir sonraki istek için sıfırla
+      innertubeInstance = null;
       return NextResponse.json(
         { error: "Bu video için ses akışı bulunamadı." },
         { status: 404 },
       );
     }
 
-    // En yüksek kaliteli ses formatını seç
-    const bestAudio = audioFormats.sort(
-      (a, b) => (b.bitrate ?? 0) - (a.bitrate ?? 0),
-    )[0]!;
-
-    // Deciphered URL al
-    const audioUrl = await bestAudio.decipher(innertube.session.player);
-
-    if (!audioUrl) {
-      return NextResponse.json(
-        { error: "Ses akışı URL'i çözülemedi." },
-        { status: 500 },
-      );
-    }
-
     // İstemciden gelen Range header'ını proxy et (seek desteği için)
     const rangeHeader = request.headers.get("range");
-    const fetchHeaders: Record<string, string> = {};
+    const fetchHeaders: Record<string, string> = {
+      // googlevideo CDN, IOS istemcisinden alınan URL'lerde eşleşen
+      // User-Agent bekler; aksi halde 403 dönebilir.
+      "User-Agent":
+        "com.google.ios.youtube/19.45.4 (iPhone16,2; U; CPU iOS 18_1_0 like Mac OS X;)",
+    };
     if (rangeHeader) {
       fetchHeaders["Range"] = rangeHeader;
     }
