@@ -164,12 +164,11 @@ function playerReducer(state: PlayerState, action: PlayerAction): PlayerState {
     }
 
     case "PLAY_PREV": {
+      // "3 saniyeden fazla çalınmışsa baştan başlat" kararı Player.tsx'te
+      // gerçek oynatıcı zamanına göre verilir (handlePlayPrev) — orada
+      // "baştan başlat" seçilirse bu action hiç dispatch edilmez. Buraya
+      // geldiğinde her zaman gerçekten önceki şarkıya geçilir.
       if (state.queue.length === 0) return state;
-
-      // Şarkı 3 saniyeden fazla oynandıysa başa sar, yoksa önceki şarkıya geç
-      if (state.currentTime > 3) {
-        return { ...state, currentTime: 0 };
-      }
 
       const prevIndex =
         state.queueIndex <= 0

@@ -6,6 +6,7 @@ import { usePlayer } from "../../contexts/PlayerContext";
 import type { Playlist } from "../../contexts/LibraryContext";
 import type { PlayerTrack } from "../../contexts/PlayerContext";
 import { useI18n } from "../../contexts/I18nContext";
+import { shuffleArray } from "../../lib/utils";
 
 interface PlaylistDetailProps {
   playlist: Playlist;
@@ -47,7 +48,7 @@ export function PlaylistDetail({ playlist, onBack }: PlaylistDetailProps) {
 
   const handleShufflePlay = () => {
     if (tracks.length === 0) return;
-    const shuffled = [...tracks].sort(() => Math.random() - 0.5);
+    const shuffled = shuffleArray(tracks);
     playPlaylist(shuffled);
   };
 

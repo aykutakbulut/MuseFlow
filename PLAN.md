@@ -40,13 +40,22 @@
 - Dosyalar: [Player.tsx](src/components/player/Player.tsx), [PlayerContext.tsx](src/contexts/PlayerContext.tsx)
 - Doğrulama: tsc temiz, build başarılı, 17/17 test geçti — izolasyon iddiası **çağrı sayacıyla kanıtlandı** (`PlayerContext.test.tsx`: `usePlayer()` tüketicisi setTime sonrası 0 ek render, `usePlayerTime()` tüketicisi her dispatch'te render)
 
-### Faz 5 — Fonksiyon denetimi (favoriler, playlist, queue, son dinlenenler)
-- [ ] Favoriler ekle/çıkar/kalıcılık
-- [ ] Playlist oluştur/sil/yeniden adlandır/ekle/çıkar/sırala
-- [ ] Queue: shuffle, loop, next/prev, playlist sonu davranışı
-- [ ] Son dinlenenler: 50 sınırı, sıralama
-- [ ] Hidrasyon/SSR flicker kontrolü
-- Dosyalar: [LibraryContext.tsx](src/contexts/LibraryContext.tsx), [PlaylistDetail.tsx](src/components/cards/PlaylistDetail.tsx), [page.tsx](src/app/page.tsx)
+### Faz 5 — Fonksiyon denetimi (favoriler, playlist, queue, son dinlenenler) ✅ TAMAMLANDI
+
+**Bulunan ve düzeltilen gerçek bug'lar:**
+- [x] **`handleEnded` queue ilerleme bug'ı:** `queue.length > 0 && queueIndex >= 0` koşulu, tek şarkı çalarken (queueIndex=-1) kuyruğa şarkı eklenince mevcut şarkı bitince kuyruktakine geçmiyordu — sessizce duruyordu. `queueIndex >= 0` şartı kaldırıldı. Regresyon testi eklendi ([Player.test.tsx](src/components/player/Player.test.tsx)) — eski koşulla test gerçekten kırıldığı doğrulandı.
+- [x] **"Önceki" butonu hiç seek etmiyordu:** 3 saniyeden fazla çalınmışsa "baştan başlat" mantığı sadece context state'ine `currentTime:0` yazıyordu, gerçek YouTube oynatıcısına `seekTo` çağrısı YOKTU — ilerleme çubuğu anlık 0'a zıplayıp 1sn sonra gerçek konuma geri dönüyordu, şarkı asla baştan başlamıyordu. Karar artık Player.tsx'te gerçek oynatıcı zamanıyla veriliyor (`handlePlayPrev`), reducer sadeleştirildi.
+- [x] **Bozuk shuffle algoritması (2 yerde):** `array.sort(() => Math.random() - 0.5)` istatistiksel olarak düzgün karıştırma yapmıyordu (V8'in stabil sort'u bazı sıralamaları çok daha olası yapıyor — ölçüldü: `[1614,815,616,751,1204]` dağılım, beklenen ~1000 her biri). [PlaylistDetail.tsx](src/components/cards/PlaylistDetail.tsx) (Karıştırarak Çal) ve [page.tsx](src/app/page.tsx) (Sizin İçin önerileri) düzeltildi — yeni `shuffleArray` (Fisher-Yates) [lib/utils.ts](src/lib/utils.ts)'e eklendi, birim testle uniform dağılım kanıtlandı.
+- [x] **Hidrasyon flicker:** `isHydrated` sadece "Playlists" bölümünde kontrol ediliyordu. "Son Dinlenenler", "Sizin İçin" ve "Favoriler" (Home + Library tab) hidrasyon tamamlanmadan `[]` görüp "boş" mesajı gösterip sonra aniden gerçek veriye dönüyordu (Favoriler bölümü ise tamamen kaybolup beliriyordu — layout shift). Tüm bu bölümlere iskelet/loading state eklendi (`HorizontalList`'e `isLoading` prop'u).
+
+**Denetlenip doğru bulunanlar (gerçek render/persistence testleriyle):**
+- [x] Favoriler ekle/çıkar/kalıcılık — gerçek localStorage round-trip testiyle doğrulandı (unmount + yeniden render, veri geri geliyor)
+- [x] Playlist oluştur/sil/yeniden adlandır/ekle/çıkar/sırala — hepsi için yeni testler eklendi, mükerrer ekleme engellendiği doğrulandı
+- [x] Queue: shuffle (PLAY_NEXT'teki uniform random seçim doğru), loop (queue sonunda başa dönme/durma doğru), son dinlenenler 50 sınırı + tekrar çalınca öne alma (mükerrer kayıt OLUŞTURMUYOR) doğrulandı
+- [x] `trackMap` zamanla büyüyüp eski track'leri temizlemiyor (storage leak) — **bilinen, düşük öncelikli** bulgu; 2 kişilik kişisel kullanımda yıllarca soruna yol açmaz, şimdilik düzeltilmedi
+
+- Dosyalar: [Player.tsx](src/components/player/Player.tsx), [PlayerContext.tsx](src/contexts/PlayerContext.tsx), [LibraryContext.tsx](src/contexts/LibraryContext.tsx), [PlaylistDetail.tsx](src/components/cards/PlaylistDetail.tsx), [page.tsx](src/app/page.tsx), [HorizontalList.tsx](src/components/ui/HorizontalList.tsx), [utils.ts](src/lib/utils.ts)
+- Doğrulama: tsc temiz, build başarılı, **27/27 test geçti** (10 yeni test eklendi: Player.test.tsx 1, LibraryContext.test.tsx 5, utils.test.ts 4)
 
 ### Faz 6 — Temizlik
 - [ ] Sonsuz animasyonları (animate-pulse/spin) sadece yüklenirken göster

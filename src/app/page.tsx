@@ -18,7 +18,7 @@ import type { PlayerTrack } from "../contexts/PlayerContext";
 import type { Tab } from "../components/layout/MobileBottomNav";
 import type { YouTubeSearchResponse } from "../types/youtube";
 import { Play, Heart, Plus, ChevronRight, Search } from "lucide-react";
-import { cn } from "../lib/utils";
+import { cn, shuffleArray } from "../lib/utils";
 import { useI18n } from "../contexts/I18nContext";
 
 type Track = PlayerTrack;
@@ -130,10 +130,10 @@ export default function Home() {
   const selectedPlaylist = playlists.find((p) => p.id === selectedPlaylistId) ?? null;
 
   const mockRecommendations = useMemo(() => {
-    return [...recentlyPlayed, ...favoriteTracks]
-      .filter((v, i, a) => a.findIndex((t) => t.id === v.id) === i) // unique
-      .sort(() => Math.random() - 0.5)
-      .slice(0, 8);
+    const unique = [...recentlyPlayed, ...favoriteTracks].filter(
+      (v, i, a) => a.findIndex((t) => t.id === v.id) === i,
+    );
+    return shuffleArray(unique).slice(0, 8);
   }, [recentlyPlayed, favoriteTracks]);
 
   // ── Mini Track Satırı ─────────────────────
@@ -192,9 +192,10 @@ export default function Home() {
       <div className="space-y-10 pt-4 pb-8">
         <MoodHeader />
         
-        <HorizontalList 
-          title={t("home.recentlyPlayed")} 
+        <HorizontalList
+          title={t("home.recentlyPlayed")}
           onViewAll={() => setActiveTab("library")}
+          isLoading={!isHydrated}
           isEmpty={recentlyPlayed.length === 0}
           emptyMessage={t("home.emptyRecentlyPlayed")}
         >
@@ -203,8 +204,9 @@ export default function Home() {
           ))}
         </HorizontalList>
 
-        <HorizontalList 
-          title={t("home.madeForYou")} 
+        <HorizontalList
+          title={t("home.madeForYou")}
+          isLoading={!isHydrated}
           isEmpty={mockRecommendations.length === 0}
           emptyMessage={t("home.emptyMadeForYou")}
         >
@@ -213,10 +215,15 @@ export default function Home() {
           ))}
         </HorizontalList>
 
-        {favoriteTracks.length > 0 && (
-          <HorizontalList 
-            title={t("home.favorites")} 
+        {/* Hidrasyon tamamlanmadan favoriteTracks her zaman [] olur — bu yüzden
+            hidrasyon sürerken bölümü tamamen gizlemek yerine iskelet gösteriyoruz.
+            Aksi halde favorisi olan bir kullanıcı için bölüm anlık kaybolup
+            tekrar belirir (layout shift). */}
+        {(!isHydrated || favoriteTracks.length > 0) && (
+          <HorizontalList
+            title={t("home.favorites")}
             onViewAll={() => setActiveTab("library")}
+            isLoading={!isHydrated}
           >
             {favoriteTracks.map((track) => (
               <MediaCard key={track.id} track={track} onClick={handlePlayCard} />
@@ -363,7 +370,11 @@ export default function Home() {
               <Heart className="h-5 w-5 text-primary" /> {t("home.likedSongs")}
             </h2>
             <div className="space-y-2">
-              {favoriteTracks.length === 0 ? (
+              {!isHydrated ? (
+                Array.from({ length: 2 }).map((_, i) => (
+                  <div key={i} className="h-14 animate-pulse rounded-xl bg-surface" />
+                ))
+              ) : favoriteTracks.length === 0 ? (
                 <p className="text-sm text-muted">{t("home.noFavorites")}</p>
               ) : (
                 favoriteTracks.map((track) => <TrackRow key={track.id} track={track} />)
@@ -375,7 +386,11 @@ export default function Home() {
               <Play className="h-5 w-5 text-primary" /> {t("home.recentlyPlayed")}
             </h2>
             <div className="space-y-2">
-              {recentlyPlayed.length === 0 ? (
+              {!isHydrated ? (
+                Array.from({ length: 2 }).map((_, i) => (
+                  <div key={i} className="h-14 animate-pulse rounded-xl bg-surface" />
+                ))
+              ) : recentlyPlayed.length === 0 ? (
                 <p className="text-sm text-muted">{t("home.cleanHistory")}</p>
               ) : (
                 recentlyPlayed.slice(0, 10).map((track) => <TrackRow key={track.id} track={track} />)

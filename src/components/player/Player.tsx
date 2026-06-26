@@ -95,7 +95,6 @@ export function Player() {
     isShuffle,
     volume,
     queue,
-    queueIndex,
     setPlaying,
     setLooping,
     setShuffle,
@@ -207,7 +206,9 @@ export function Player() {
   }, [isVideoMode]);
 
   const handleEnded = () => {
-    if (queue.length > 0 && queueIndex >= 0) {
+    // queueIndex -1 olabilir (örn. tek şarkı çalarken kuyruğa şarkı eklendiğinde) —
+    // bu durumda da kuyrukta ilerlenecek şarkı varsa devam edilmeli.
+    if (queue.length > 0) {
       playNext();
     } else if (isLooping && playerRef.current) {
       void playerRef.current.seekTo(0, true);
@@ -223,6 +224,20 @@ export function Player() {
   };
   const toggleLoop = () => setLooping(!isLooping);
   const toggleShuffle = () => setShuffle(!isShuffle);
+
+  // "Önceki" butonu: 3 saniyeden fazla çalınmışsa şarkıyı baştan başlat,
+  // değilse gerçekten önceki şarkıya geç. Kararı GERÇEK oynatıcı zamanına
+  // göre veriyoruz (context state 1sn'de bir güncellenip gecikmeli olabilir).
+  const handlePlayPrev = () => {
+    const t = playerRef.current?.getCurrentTime?.() ?? 0;
+    if (playerRef.current && t > 3) {
+      void playerRef.current.seekTo(0, true);
+      lastDispatchedTimeRef.current = 0;
+      setTime(0);
+      return;
+    }
+    playPrev();
+  };
 
   const handleSeekStart = () => setSeeking(true);
 
@@ -395,7 +410,7 @@ export function Player() {
             <button onClick={toggleShuffle} className={cn("p-3 transition-colors", isShuffle ? "text-primary" : "text-muted hover:text-white")}>
               <Shuffle className="h-6 w-6" />
             </button>
-            <button onClick={playPrev} disabled={!hasQueue} className="p-3 text-white hover:text-primary transition-colors disabled:opacity-50">
+            <button onClick={handlePlayPrev} disabled={!hasQueue} className="p-3 text-white hover:text-primary transition-colors disabled:opacity-50">
               <SkipBack className="h-10 w-10 fill-current" />
             </button>
             <button onClick={() => togglePlay()} className="p-5 bg-white text-black rounded-full hover:scale-105 transition-transform">
