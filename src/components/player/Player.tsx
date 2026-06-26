@@ -86,11 +86,22 @@ export function Player() {
     return () => window.clearInterval(id);
   }, [setTime, setDuration]);
 
+  // Ses modunda video görünmez olsa da arkada decode edilmeye devam eder.
+  // Kaliteyi en düşüğe sabitlemek pil/ısı yükünü büyük ölçüde azaltır.
+  const applyLowQuality = (player: YouTubePlayer) => {
+    try {
+      void player.setPlaybackQuality?.("tiny");
+    } catch {
+      // Bazı tarayıcılarda desteklenmeyebilir, sorun değil
+    }
+  };
+
   const handleReady = (event: YouTubeEvent<number>) => {
     playerRef.current = event.target;
     void event.target.setVolume(volume);
     const d = (event.target.getDuration?.() as number) ?? 0;
     if (d) setDuration(d);
+    if (!isVideoMode) applyLowQuality(event.target);
     if (isPlaying) void event.target.playVideo();
   };
 
@@ -100,10 +111,19 @@ export function Player() {
       setPlaying(true);
       const d = (event.target.getDuration?.() as number) ?? 0;
       if (d) setDuration(d);
+      // YouTube oynatma başladığında kaliteyi otomatik yükseltebilir,
+      // ses modundaysak tekrar düşür.
+      if (!isVideoMode) applyLowQuality(event.target);
     } else if (ytState === 2) {
       setPlaying(false);
     }
   };
+
+  // Video modundan ses moduna geçişte kaliteyi anında düşür (çalma sürerken geçilirse de)
+  useEffect(() => {
+    if (!playerRef.current || isVideoMode) return;
+    applyLowQuality(playerRef.current);
+  }, [isVideoMode]);
 
   const handleEnded = () => {
     if (queue.length > 0 && queueIndex >= 0) {
@@ -245,7 +265,16 @@ export function Player() {
                 opts={{
                   height: "100%",
                   width: "100%",
-                  playerVars: { autoplay: 1, controls: 0, disablekb: 1, fs: 0, modestbranding: 1, rel: 0 },
+                  playerVars: {
+                    autoplay: 1,
+                    controls: 0,
+                    disablekb: 1,
+                    fs: 0,
+                    modestbranding: 1,
+                    rel: 0,
+                    playsinline: 1,
+                    iv_load_policy: 3,
+                  },
                 }}
                 onReady={handleReady}
                 onEnd={handleEnded}
