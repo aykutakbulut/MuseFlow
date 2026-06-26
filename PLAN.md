@@ -31,12 +31,14 @@
 - Dosya: [PlayerContext.tsx](src/contexts/PlayerContext.tsx)
 - Doğrulama: tsc temiz, build başarılı, 16/16 test geçti (yeni test dahil)
 
-### Faz 4 — Re-render / GPU yükü azaltma
-- [ ] Zaman polling: 250ms → 1000ms, sadece çalarken interval kur
-- [ ] PlayerContext `value`'yu memoize et (her render'da yeniden oluşuyor)
-- [ ] Progress bar'ı izole bileşene al
-- [ ] backdrop-blur-3xl → daha hafif; modal sadece açıkken render
+### Faz 4 — Re-render / GPU yükü azaltma ✅ TAMAMLANDI
+- [x] Zaman polling: 250ms → 1000ms, sadece `isPlaying` true iken interval kurulur (duraklatınca tamamen durur)
+- [x] **PlayerContext ikiye bölündü:** `usePlayer()` (current/isPlaying/queue/aksiyonlar — currentTime/duration İÇERMİYOR) ve `usePlayerTime()` (sadece currentTime/duration). Context'in tek parça olması yüzünden her saniye TÜM tüketicilerin (Player'ın ana gövdesi dahil) re-render olması sorunu kökten çözüldü
+- [x] `MiniProgressBar` ve `ScrubBar` izole bileşenlere alındı — sadece bunlar `usePlayerTime()` kullanıyor; Player'ın ana gövdesi (YouTube iframe, butonlar) artık zaman tikleriyle re-render olmuyor
+- [x] Tam ekran modalın `backdrop-blur-3xl`'i koşullu hale getirildi (`isExpanded` değilken blur class'ı hiç uygulanmıyor)
+- [x] PlayerContext value'ları `useMemo` ile memoize edildi
 - Dosyalar: [Player.tsx](src/components/player/Player.tsx), [PlayerContext.tsx](src/contexts/PlayerContext.tsx)
+- Doğrulama: tsc temiz, build başarılı, 17/17 test geçti — izolasyon iddiası **çağrı sayacıyla kanıtlandı** (`PlayerContext.test.tsx`: `usePlayer()` tüketicisi setTime sonrası 0 ek render, `usePlayerTime()` tüketicisi her dispatch'te render)
 
 ### Faz 5 — Fonksiyon denetimi (favoriler, playlist, queue, son dinlenenler)
 - [ ] Favoriler ekle/çıkar/kalıcılık

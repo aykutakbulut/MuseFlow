@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, act } from "@testing-library/react";
-import { PlayerProvider, usePlayer } from "./PlayerContext";
+import { PlayerProvider, usePlayer, usePlayerTime } from "./PlayerContext";
 
 function TestComponent() {
   const { current, queue, queueIndex, isPlaying, setTrack, playNext, addToQueue, playPlaylist } =
@@ -130,5 +130,67 @@ describe("PlayerContext", () => {
       screen.getByText("Next").click();
     });
     expect(screen.getByTestId("current-track")).toHaveTextContent("Track 3");
+  });
+});
+
+describe("PlayerContext — currentTime/duration izolasyonu", () => {
+  // Player'ın ana gövdesi (usePlayer) saniyede tikleyen zaman yüzünden
+  // re-render OLMAMALI; sadece zamana abone olan bileşenler (usePlayerTime)
+  // re-render olmalı. Bu, ısınma/perf düzeltmesinin temel iddiasıdır.
+  function StateConsumer({ onRender }: { onRender: () => void }) {
+    onRender();
+    const { isPlaying, setTime } = usePlayer();
+    return (
+      <div>
+        <div data-testid="state-is-playing">{isPlaying ? "Yes" : "No"}</div>
+        <button type="button" onClick={() => setTime(42)}>
+          Dispatch Time
+        </button>
+      </div>
+    );
+  }
+
+  function TimeConsumer({ onRender }: { onRender: () => void }) {
+    onRender();
+    const { currentTime } = usePlayerTime();
+    return <div data-testid="time-current">{currentTime}</div>;
+  }
+
+  it("re-renders only the usePlayerTime() consumer when currentTime changes, not the usePlayer() consumer", () => {
+    let stateCalls = 0;
+    let timeCalls = 0;
+
+    function Probe() {
+      return (
+        <div>
+          <StateConsumer onRender={() => (stateCalls += 1)} />
+          <TimeConsumer onRender={() => (timeCalls += 1)} />
+        </div>
+      );
+    }
+
+    render(
+      <PlayerProvider>
+        <Probe />
+      </PlayerProvider>,
+    );
+
+    const stateCallsAfterMount = stateCalls;
+    const timeCallsAfterMount = timeCalls;
+
+    act(() => {
+      screen.getByText("Dispatch Time").click();
+    });
+    act(() => {
+      screen.getByText("Dispatch Time").click();
+    });
+    act(() => {
+      screen.getByText("Dispatch Time").click();
+    });
+
+    // TimeConsumer her dispatch'te yeniden render olur (currentTime context'i değişiyor)
+    expect(timeCalls).toBeGreaterThan(timeCallsAfterMount);
+    // StateConsumer hiç yeniden render OLMAMALI — usePlayer() currentTime içermiyor
+    expect(stateCalls).toBe(stateCallsAfterMount);
   });
 });

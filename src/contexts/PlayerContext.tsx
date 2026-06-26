@@ -4,6 +4,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useMemo,
   useReducer,
   type ReactNode,
 } from "react";
@@ -191,8 +192,15 @@ function playerReducer(state: PlayerState, action: PlayerAction): PlayerState {
 }
 
 // ── Context ────────────────────────────────────────────────────────────────
+//
+// currentTime/duration saniyede bir güncellenir; bunları ana context'ten
+// AYRI bir context'te tutuyoruz. Aksi halde her saniye değişen bu alanlar
+// yüzünden usePlayer() çağıran HER bileşen (Player'ın ana gövdesi, butonlar,
+// YouTube iframe sarmalayıcısı dahil) saniyede bir re-render olurdu — bu da
+// arka planda çalarken sürekli CPU/pil/ısı tüketiminin başlıca sebeplerinden
+// biriydi. Sadece zamana ihtiyaç duyan küçük bileşenler usePlayerTime() kullanır.
 
-type PlayerContextValue = PlayerState & {
+type PlayerStateValue = Omit<PlayerState, "currentTime" | "duration"> & {
   // Temel kontroller
   setTrack: (track: PlayerTrack) => void;
   setPlaying: (playing: boolean) => void;
@@ -210,7 +218,17 @@ type PlayerContextValue = PlayerState & {
   playAtIndex: (index: number) => void;
 };
 
-const PlayerContext = createContext<PlayerContextValue | undefined>(undefined);
+type PlayerTimeValue = {
+  currentTime: number;
+  duration: number;
+};
+
+const PlayerStateContext = createContext<PlayerStateValue | undefined>(
+  undefined,
+);
+const PlayerTimeContext = createContext<PlayerTimeValue | undefined>(
+  undefined,
+);
 
 export function PlayerProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(playerReducer, initialState);
@@ -263,32 +281,83 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const value: PlayerContextValue = {
-    ...state,
-    setTrack,
-    setPlaying,
-    setLooping,
-    setShuffle,
-    setVolume,
-    setTime,
-    setDuration,
-    addToQueue,
-    clearQueue,
-    playNext,
-    playPrev,
-    playPlaylist,
-    playAtIndex,
-  };
+  // useCallback'ler her render'da stabil olduğu için bağımlılıklar sadece
+  // currentTime/duration HARİÇ state alanları — bu sayede her saniye tikleyen
+  // zaman, bu context'i (ve onu kullanan Player'ın ana gövdesini) tetiklemez.
+  const stateValue: PlayerStateValue = useMemo(
+    () => ({
+      current: state.current,
+      isPlaying: state.isPlaying,
+      isLooping: state.isLooping,
+      isShuffle: state.isShuffle,
+      volume: state.volume,
+      queue: state.queue,
+      queueIndex: state.queueIndex,
+      setTrack,
+      setPlaying,
+      setLooping,
+      setShuffle,
+      setVolume,
+      setTime,
+      setDuration,
+      addToQueue,
+      clearQueue,
+      playNext,
+      playPrev,
+      playPlaylist,
+      playAtIndex,
+    }),
+    [
+      state.current,
+      state.isPlaying,
+      state.isLooping,
+      state.isShuffle,
+      state.volume,
+      state.queue,
+      state.queueIndex,
+      setTrack,
+      setPlaying,
+      setLooping,
+      setShuffle,
+      setVolume,
+      setTime,
+      setDuration,
+      addToQueue,
+      clearQueue,
+      playNext,
+      playPrev,
+      playPlaylist,
+      playAtIndex,
+    ],
+  );
+
+  const timeValue: PlayerTimeValue = useMemo(
+    () => ({ currentTime: state.currentTime, duration: state.duration }),
+    [state.currentTime, state.duration],
+  );
 
   return (
-    <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>
+    <PlayerStateContext.Provider value={stateValue}>
+      <PlayerTimeContext.Provider value={timeValue}>
+        {children}
+      </PlayerTimeContext.Provider>
+    </PlayerStateContext.Provider>
   );
 }
 
 export function usePlayer() {
-  const ctx = useContext(PlayerContext);
+  const ctx = useContext(PlayerStateContext);
   if (!ctx) {
     throw new Error("usePlayer must be used within PlayerProvider");
+  }
+  return ctx;
+}
+
+/** Sadece oynatma zamanına ihtiyaç duyan bileşenler için (örn. ilerleme çubuğu) — saniyede bir tikleyen bu değerler ana state'ten ayrı tutulur. */
+export function usePlayerTime() {
+  const ctx = useContext(PlayerTimeContext);
+  if (!ctx) {
+    throw new Error("usePlayerTime must be used within PlayerProvider");
   }
   return ctx;
 }
