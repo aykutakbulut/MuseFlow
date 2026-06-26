@@ -61,12 +61,16 @@ const initialState: PlayerState = {
 function playerReducer(state: PlayerState, action: PlayerAction): PlayerState {
   switch (action.type) {
     case "SET_TRACK":
+      // Tek şarkı çalma: önceki bir playlist/queue bağlamından kalan
+      // queue'yu temizle — aksi halde şarkı bitince alakasız bir sıradaki
+      // şarkıya geçilirdi (eski queue + queueIndex hâlâ aktifmiş gibi).
       return {
         ...state,
         current: action.track,
         isPlaying: true,
         currentTime: 0,
-        // Tekli çalma modunda queue güncellenmez
+        queue: [],
+        queueIndex: -1,
       };
 
     case "SET_PLAYING":

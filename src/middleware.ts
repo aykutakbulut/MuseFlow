@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { verifySessionToken } from "@/lib/auth";
 
-export function middleware(req: NextRequest) {
+export async function middleware(req: NextRequest) {
   const password = process.env.APP_PASSWORD;
 
   // Şifre tanımlanmamışsa koruma devre dışı kalır
@@ -15,39 +16,11 @@ export function middleware(req: NextRequest) {
   }
 
   const authCookie = req.cookies.get("museflow_auth");
-
-  // Cookie varsa ve doğruysa devam et
-  if (authCookie) {
-    // Bcrypt verification in middleware is tricky because middleware runs on Edge.
-    // However, since we just installed bcryptjs (which is pure JS), it might work, 
-    // or it might be too heavy for Edge. 
-    // Wait, next.config.js has turbopack enabled, and we use bcryptjs. 
-    // Let's implement the verification here.
-    
-    try {
-      const bcrypt = require('bcryptjs');
-      if (bcrypt.compareSync(password, authCookie.value)) {
-         return NextResponse.next();
-      }
-    } catch (e) {
-      // Ignore and fallback to redirect
-      console.error("Bcrypt compare failed in middleware", e);
-    }
+  if (authCookie && (await verifySessionToken(authCookie.value, password))) {
+    return NextResponse.next();
   }
 
-  // Geriye uyumluluk için Basic Auth kontrolü
-  const basicAuth = req.headers.get("authorization");
-  if (basicAuth) {
-    const authValue = basicAuth.split(" ")[1];
-    if (authValue) {
-      const [, pwd] = atob(authValue).split(":");
-      if (pwd === password) {
-        return NextResponse.next();
-      }
-    }
-  }
-
-  // Cookie veya Basic Auth yoksa/yanlışsa login sayfasına yönlendir
+  // Cookie yoksa/geçersizse login sayfasına yönlendir
   const loginUrl = new URL("/login", req.url);
   return NextResponse.redirect(loginUrl);
 }

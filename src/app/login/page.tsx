@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { hashPassword } from "@/lib/auth";
+import { createSessionToken } from "@/lib/auth";
 
 export default async function LoginPage({
   searchParams,
@@ -15,11 +15,11 @@ export default async function LoginPage({
     const password = formData.get("password") as string;
     const correctPassword = process.env.APP_PASSWORD;
 
-    if (password === correctPassword) {
-      const hashedPassword = await hashPassword(password);
-      
+    if (correctPassword && password === correctPassword) {
+      const token = await createSessionToken(correctPassword);
+
       const cookieStore = await cookies();
-      cookieStore.set("museflow_auth", hashedPassword, {
+      cookieStore.set("museflow_auth", token, {
         maxAge: 60 * 60 * 24 * 365, // 1 yıl geçerli
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",

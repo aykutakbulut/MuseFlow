@@ -3,13 +3,15 @@ import { render, screen, act } from "@testing-library/react";
 import { PlayerProvider, usePlayer } from "./PlayerContext";
 
 function TestComponent() {
-  const { current, queue, isPlaying, setTrack, playNext, addToQueue } = usePlayer();
+  const { current, queue, queueIndex, isPlaying, setTrack, playNext, addToQueue, playPlaylist } =
+    usePlayer();
 
   return (
     <div>
       <div data-testid="current-track">{current?.title || "None"}</div>
       <div data-testid="is-playing">{isPlaying ? "Yes" : "No"}</div>
       <div data-testid="queue-length">{queue.length}</div>
+      <div data-testid="queue-index">{queueIndex}</div>
       <button
         type="button"
         onClick={() => setTrack({ id: "1", title: "Track 1", channel: "A", thumbnail: "" })}
@@ -18,9 +20,26 @@ function TestComponent() {
       </button>
       <button
         type="button"
+        onClick={() => setTrack({ id: "3", title: "Track 3", channel: "C", thumbnail: "" })}
+      >
+        Play Track 3
+      </button>
+      <button
+        type="button"
         onClick={() => addToQueue({ id: "2", title: "Track 2", channel: "B", thumbnail: "" })}
       >
         Add Track 2
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          playPlaylist([
+            { id: "10", title: "Playlist A", channel: "X", thumbnail: "" },
+            { id: "11", title: "Playlist B", channel: "X", thumbnail: "" },
+          ])
+        }
+      >
+        Play Playlist
       </button>
       <button type="button" onClick={playNext}>
         Next
@@ -79,5 +98,37 @@ describe("PlayerContext", () => {
     });
 
     expect(screen.getByTestId("current-track")).toHaveTextContent("Track 2");
+  });
+
+  it("should clear the stale queue when playing a single track after a playlist", () => {
+    render(
+      <PlayerProvider>
+        <TestComponent />
+      </PlayerProvider>
+    );
+
+    // Bir playlist çal: queue 2 şarkıyla dolar
+    act(() => {
+      screen.getByText("Play Playlist").click();
+    });
+    expect(screen.getByTestId("queue-length")).toHaveTextContent("2");
+    expect(screen.getByTestId("current-track")).toHaveTextContent("Playlist A");
+
+    // Sonra bağımsız tek bir şarkıya geç (örn. playlist dışından bir tıklama)
+    act(() => {
+      screen.getByText("Play Track 3").click();
+    });
+
+    // Eski queue tamamen temizlenmiş olmalı — yoksa şarkı bitince
+    // alakasız bir "sıradaki" şarkıya atlanır (asıl bug)
+    expect(screen.getByTestId("current-track")).toHaveTextContent("Track 3");
+    expect(screen.getByTestId("queue-length")).toHaveTextContent("0");
+    expect(screen.getByTestId("queue-index")).toHaveTextContent("-1");
+
+    // playNext artık hiçbir şeye atlamamalı (queue boş)
+    act(() => {
+      screen.getByText("Next").click();
+    });
+    expect(screen.getByTestId("current-track")).toHaveTextContent("Track 3");
   });
 });

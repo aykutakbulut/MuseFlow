@@ -16,16 +16,20 @@
 - Dosya: [Player.tsx](src/components/player/Player.tsx)
 - Doğrulama: tsc temiz, build başarılı
 
-### Faz 2 — Kalıcı oturum (Edge-uyumlu auth)
-- [ ] `middleware.ts`'den `require('bcryptjs')` kaldır
-- [ ] Web Crypto (`crypto.subtle`, HMAC-SHA256) ile Edge-uyumlu token doğrulama
-- [ ] Login'de aynı token üretimi
-- [ ] Basic Auth fallback'i sadeleştir/kaldır
+### Faz 2 — Kalıcı oturum (Edge-uyumlu auth) ✅ TAMAMLANDI
+- [x] `middleware.ts`'den `require('bcryptjs')` kaldırıldı
+- [x] Web Crypto (`crypto.subtle`, HMAC-SHA256) ile Edge-uyumlu deterministik token üretimi/doğrulaması — sabit-zamanlı karşılaştırma
+- [x] Login'de aynı token üretimi (`createSessionToken`)
+- [x] Basic Auth fallback'i kaldırıldı (artık gereksiz)
+- [x] `bcryptjs`/`@types/bcryptjs` dependency'leri kaldırıldı, lockfile'lar senkron
 - Dosyalar: [middleware.ts](src/middleware.ts), [auth.ts](src/lib/auth.ts), [login/page.tsx](src/app/login/page.tsx)
+- Doğrulama: tsc temiz, build başarılı, 15/15 test geçti, auth round-trip elle test edildi (doğru/yanlış şifre, bozuk token, determinizm)
 
-### Faz 3 — Queue bug fix
-- [ ] `SET_TRACK` action'ı queue'yu sıfırlamıyor → playlist çalarken tek şarkıya tıklayınca eski queue kalıyor, şarkı bitince alakasız şarkı çalıyor
-- Dosya: [PlayerContext.tsx:63](src/contexts/PlayerContext.tsx#L63)
+### Faz 3 — Queue bug fix ✅ TAMAMLANDI
+- [x] `SET_TRACK` artık `queue:[]`, `queueIndex:-1` ile queue'yu temizliyor — playlist çalarken tek şarkıya (örn. PlaylistDetail'deki ▶ butonu) geçince eski queue kalıp şarkı bitince alakasız şarkıya atlama bug'ı düzeltildi
+- [x] Regresyon testi eklendi (`PlayerContext.test.tsx`): playlist çal → tek şarkıya geç → queue temiz + playNext etkisiz
+- Dosya: [PlayerContext.tsx](src/contexts/PlayerContext.tsx)
+- Doğrulama: tsc temiz, build başarılı, 16/16 test geçti (yeni test dahil)
 
 ### Faz 4 — Re-render / GPU yükü azaltma
 - [ ] Zaman polling: 250ms → 1000ms, sadece çalarken interval kur
