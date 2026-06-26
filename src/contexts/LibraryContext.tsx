@@ -23,7 +23,6 @@ type LibraryState = {
   playlists: Playlist[];
   /** ID → PlayerTrack haritası — playlist/favori görüntüleme için */
   trackMap: Record<string, PlayerTrack>;
-  downloaded: Record<string, PlayerTrack>;
   favorites: string[];
   recentlyPlayed: PlayerTrack[];
 };
@@ -38,7 +37,6 @@ type LibraryAction =
   | { type: "ADD_TO_PLAYLIST"; playlistId: string; track: PlayerTrack }
   | { type: "REMOVE_FROM_PLAYLIST"; playlistId: string; trackId: string }
   | { type: "REORDER_PLAYLIST"; playlistId: string; fromIndex: number; toIndex: number }
-  | { type: "TOGGLE_DOWNLOAD"; track: PlayerTrack }
   | { type: "TOGGLE_FAVORITE"; trackId: string; track?: PlayerTrack }
   | { type: "ADD_TO_RECENTLY_PLAYED"; track: PlayerTrack };
 
@@ -47,7 +45,6 @@ const MAX_RECENTLY_PLAYED = 50;
 const initialState: LibraryState = {
   playlists: [],
   trackMap: {},
-  downloaded: {},
   favorites: [],
   recentlyPlayed: [],
 };
@@ -124,21 +121,6 @@ function libraryReducer(state: LibraryState, action: LibraryAction): LibraryStat
       };
     }
 
-    case "TOGGLE_DOWNLOAD": {
-      const { track } = action;
-      const exists = state.downloaded[track.id];
-      if (exists) {
-        const next = { ...state.downloaded };
-        delete next[track.id];
-        return { ...state, downloaded: next };
-      }
-      return {
-        ...state,
-        trackMap: { ...state.trackMap, [track.id]: track },
-        downloaded: { ...state.downloaded, [track.id]: track },
-      };
-    }
-
     case "TOGGLE_FAVORITE": {
       const { trackId, track } = action;
       const isFav = state.favorites.includes(trackId);
@@ -180,8 +162,6 @@ type LibraryContextValue = LibraryState & {
   addToPlaylist: (playlistId: string, track: PlayerTrack) => void;
   removeFromPlaylist: (playlistId: string, trackId: string) => void;
   reorderPlaylist: (playlistId: string, fromIndex: number, toIndex: number) => void;
-  // İndirme
-  toggleDownload: (track: PlayerTrack) => void;
   // Favoriler
   toggleFavorite: (trackId: string, track?: PlayerTrack) => void;
   isFavorite: (trackId: string) => boolean;
@@ -208,7 +188,6 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
           payload: {
             playlists: parsed.playlists ?? [],
             trackMap: parsed.trackMap ?? {},
-            downloaded: parsed.downloaded ?? {},
             favorites: parsed.favorites ?? [],
             recentlyPlayed: parsed.recentlyPlayed ?? [],
           },
@@ -259,10 +238,6 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
       dispatch({ type: "REORDER_PLAYLIST", playlistId, fromIndex, toIndex }),
     [],
   );
-  const toggleDownload = useCallback(
-    (track: PlayerTrack) => dispatch({ type: "TOGGLE_DOWNLOAD", track }),
-    [],
-  );
   const toggleFavorite = useCallback(
     (trackId: string, track?: PlayerTrack) =>
       dispatch({ type: "TOGGLE_FAVORITE", trackId, track }),
@@ -286,7 +261,6 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     addToPlaylist,
     removeFromPlaylist,
     reorderPlaylist,
-    toggleDownload,
     toggleFavorite,
     isFavorite,
     addToRecentlyPlayed,

@@ -3,7 +3,7 @@
 import React from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Play, Heart, Plus, Download, Check } from "lucide-react";
+import { Play, Heart, Plus } from "lucide-react";
 import { usePlayer } from "../../contexts/PlayerContext";
 import { useLibrary } from "../../contexts/LibraryContext";
 import type { PlayerTrack } from "../../contexts/PlayerContext";
@@ -19,8 +19,7 @@ export const TrackCard = React.memo(function TrackCard({
   onAddToPlaylist,
 }: TrackCardProps) {
   const { setTrack } = usePlayer();
-  const { downloaded, isFavorite, toggleFavorite, toggleDownload, addToRecentlyPlayed } =
-    useLibrary();
+  const { isFavorite, toggleFavorite, addToRecentlyPlayed } = useLibrary();
 
   const handlePlay = () => {
     setTrack(track);
@@ -28,7 +27,6 @@ export const TrackCard = React.memo(function TrackCard({
   };
 
   const fav = isFavorite(track.id);
-  const isDl = !!downloaded[track.id];
 
   return (
     <article className="group flex flex-col rounded-2xl bg-surface/40 p-3 border border-white/5 transition-all duration-300 hover:-translate-y-1 hover:bg-surface-hover hover:border-primary/30 hover:shadow-2xl">
@@ -99,21 +97,6 @@ export const TrackCard = React.memo(function TrackCard({
           title="Listeye ekle"
         >
           <Plus className="h-4 w-4" />
-        </button>
-
-        {/* İndir */}
-        <button
-          type="button"
-          onClick={() => toggleDownload(track)}
-          className={cn(
-            "inline-flex h-8 w-8 items-center justify-center rounded-full transition-colors",
-            isDl
-              ? "bg-primary/20 text-primary"
-              : "bg-white/5 text-muted hover:bg-white/10 hover:text-white"
-          )}
-          title={isDl ? "İndirilenlerden kaldır" : "Uygulama içine indir"}
-        >
-          {isDl ? <Check className="h-4 w-4" /> : <Download className="h-4 w-4" />}
         </button>
       </div>
     </article>

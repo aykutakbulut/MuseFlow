@@ -1,5 +1,0 @@
-# Caddy otomatik HTTPS — {$DOMAIN} için Let's Encrypt sertifikası alır
-# DOMAIN örn: 140.238.1.2.sslip.io  (sslip.io, IP'yi otomatik o IP'ye çözer)
-{$DOMAIN} {
-	reverse_proxy extractor:3000
-}

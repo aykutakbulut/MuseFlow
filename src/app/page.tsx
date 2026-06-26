@@ -49,14 +49,12 @@ export default function Home() {
   const { setTrack } = usePlayer();
   const {
     playlists,
-    downloaded,
     favorites,
     recentlyPlayed,
     trackMap,
     isFavorite,
     createPlaylist,
     addToPlaylist,
-    toggleDownload,
     toggleFavorite,
     addToRecentlyPlayed,
     isHydrated,

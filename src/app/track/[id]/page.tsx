@@ -65,8 +65,6 @@ export default function TrackPage() {
     playlists,
     isFavorite,
     toggleFavorite,
-    toggleDownload,
-    downloaded,
     addToPlaylist,
     addToRecentlyPlayed,
   } = useLibrary();
@@ -199,7 +197,6 @@ export default function TrackPage() {
   }
 
   const fav = isFavorite(id);
-  const isDownloaded = !!downloaded[id];
 
   return (
     <div className="min-h-screen text-slate-50">
@@ -318,20 +315,6 @@ export default function TrackPage() {
               >
                 ♪ {t("track.addToList")}
               </button>
-
-              {track && (
-                <button
-                  type="button"
-                  onClick={() => toggleDownload(track)}
-                  className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition ${
-                    isDownloaded
-                      ? "border-sky-500/50 bg-sky-950/30 text-sky-400"
-                      : "border-slate-700/80 bg-slate-900/80 text-slate-200 hover:border-sky-400/40"
-                  }`}
-                >
-                  {isDownloaded ? `✓ ${t("track.downloaded")}` : `↓ ${t("track.download")}`}
-                </button>
-              )}
             </div>
 
             {/* Açıklama */}
